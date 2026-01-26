@@ -6,9 +6,9 @@ Este repositorio contiene los scripts y el análisis desarrollado para mi Trabaj
 
 El código está organizado de forma secuencial para facilitar su consulta y replicación:
 
-1. **`01_TFM_EDA.ipynb`**: Análisis Exploratorio de Datos (EDA). Contiene el estudio de las variables de la base de datos, análisis clúster y detección de atípicos.
-2. **`02_TFM_Modelos.ipynb`**: Implementación de modelos predictivos sobre la base de datos original. Se aplican y comparan ajustes de **ARIMA** y **Prophet**.
-3. **`03_TFM_Modelos_Outliers.ipynb`**: Análisis de robustez aplicando los mismos modelos (ARIMA y Prophet) sobre una versión del dataset tras un proceso de limpieza de valores atípicos (outliers).
+1. **`01_TFM_Diego_EDA2.ipynb`**: Análisis Exploratorio de Datos (EDA). Contiene el estudio de las variables de la base de datos, análisis clúster y detección de atípicos.
+2. **`02_TFM_Diego_Modelos.ipynb`**: Implementación de modelos predictivos sobre la base de datos original. Se aplican y comparan ajustes de **ARIMA** y **Prophet**.
+3. **`03_TFM_Diego_Modelos_Outliers2.ipynb`**: Análisis de robustez aplicando los mismos modelos (ARIMA y Prophet) sobre una versión del dataset tras un proceso de limpieza de valores atípicos (outliers).
 4. **`Funcions.py`**: Módulo de Python que contiene todas las funciones personalizadas de preprocesamiento, cálculo de métricas y visualización utilizadas en los notebooks de modelado.
 
 ## Tecnologías Utilizadas
