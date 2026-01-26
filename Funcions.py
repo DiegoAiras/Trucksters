@@ -11,8 +11,8 @@ from statsmodels.stats.diagnostic import acorr_ljungbox
 from prophet import Prophet
 import logging
 from prophet.plot import plot_forecast_component
-
-
+import itertools
+from prophet.diagnostics import cross_validation, performance_metrics
 
 
 
@@ -28,7 +28,7 @@ def cargar_e_preparar_datos(ruta_csv):
         dict: Dicionario con claves ['Global', 'Cluster 1', 'Cluster 2', 'Cluster 3']
               contendo os DataFrames listos para modelar.
     """
-    print(f"📂 Cargando datos dende: {ruta_csv}")
+    print(f"Cargando datos dende: {ruta_csv}")
     
     # 1. Lectura
     datos = pd.read_csv(ruta_csv, sep=',', decimal='.')
@@ -64,7 +64,7 @@ def cargar_e_preparar_datos(ruta_csv):
         
         datasets[f'Cluster {cluster_id}'] = df_temp
         
-    print(f"   ✅ Datos procesados: Atopáronse {len(lista_clusters)} clusters.")
+    print(f"   Datos procesados: Atopáronse {len(lista_clusters)} clusters.")
     return datasets
 
 
@@ -153,7 +153,7 @@ def calcular_metricas_completas(y_true, y_pred, y_train, m=1, etiqueta="Modelo")
         tipo_mase = f"Estacional (m={m})"
     
     # Impresión de resultados
-    print(f"--- 📊 AVALIACIÓN: {etiqueta} ---")
+    print(f"--- AVALIACIÓN: {etiqueta} ---")
     print(f"MAE:  {mae:.2f}")
     print(f"RMSE: {rmse:.2f}")
     print(f"MAPE: {mape:.2f}%")
@@ -161,9 +161,9 @@ def calcular_metricas_completas(y_true, y_pred, y_train, m=1, etiqueta="Modelo")
     
     # Interpretación rápida
     if mase < 1:
-        print("✅ CONCLUSIÓN: O modelo aporta valor (MASE < 1).")
+        print(" CONCLUSIÓN: O modelo aporta valor (MASE < 1).")
     else:
-        print("⚠️ CONCLUSIÓN: O modelo non supera ao benchmark (MASE > 1).")
+        print(" CONCLUSIÓN: O modelo non supera ao benchmark (MASE > 1).")
         
     # Devolvemos un dicionario por se queres gardar os datos
     return {'MAE': mae, 'RMSE': rmse, 'MAPE': mape, 'MASE': mase}
@@ -210,7 +210,7 @@ def preparar_datos_arima(df_input, fecha_corte='2024-12-30', col_target='n_pedid
     datos_train = df_proc.loc[mask_train]
     datos_test  = df_proc.loc[mask_test]
     
-    print(f"   ✂️ Split ({fecha_corte}): Train={len(datos_train)} | Test={len(datos_test)}")
+    print(f"   Split ({fecha_corte}): Train={len(datos_train)} | Test={len(datos_test)}")
     
     # 4. Extracción de Series
     y_train = datos_train[col_target]
@@ -250,7 +250,6 @@ def plot_analisis_intervencion(df_input, fechas_clave, titulo="Análise de Inter
         if fecha >= df.index.min() and fecha <= df.index.max():
             plt.axvline(x=fecha, color='red', linestyle='--', alpha=0.3)
             
-    plt.title(titulo, fontsize=16, fontweight='bold')
     plt.ylabel('Pedidos')
     plt.legend()
     plt.grid(True, alpha=0.4)
@@ -303,39 +302,56 @@ def crear_features_black_friday(df_input, fechas_bf, weeks_pre=3, weeks_post=2):
     return df
 
 
-def plot_identificacion_arima(series, lags=52, titulo="Diagnóstico Inicial"):
+def plot_identificacion_arima(series, lags=52):
     """
-    Xera un panel de 3 gráficos para identificación de modelos ARIMA:
-    1. Serie Temporal (Tendencia e Heterocedasticidade).
-    2. ACF (Autocorrelación Simple) -> Para identificar MA(q).
-    3. PACF (Autocorrelación Parcial) -> Para identificar AR(p).
+    Xera un panel de 3 gráficos (Serie, ACF, PACF) LIMPOS (sen títulos).
+    Ideal para documentos con caption externa.
     
     Args:
-        series (pd.Series): Serie temporal de adestramento.
-        lags (int): Número de retardos a mostrar (52 para semanal é estándar).
-        titulo (str): Título superior do gráfico.
+        series (pd.Series): Serie temporal.
+        lags (int): Número de retardos.
     """
     sns.set_theme(style="whitegrid")
     
     # Previr erros con nulos
     series_clean = series.dropna()
     
-    fig, axes = plt.subplots(3, 1, figsize=(10, 10))
+    # Axustamos o tamaño vertical para que os 3 gráficos respiren ben
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10))
     
-    # 1. Serie Temporal
+    # --- 1. Serie Temporal ---
     axes[0].plot(series_clean, color="steelblue", linewidth=1.5)
-    axes[0].set_title(f"Serie Temporal: {titulo}", fontsize=12, fontweight='bold')
-    axes[0].set_ylabel("Pedidos")
+    axes[0].set_ylabel("Pedidos", fontsize=12)
+    # Aseguramos que non hai título
+    axes[0].set_title("") 
     
-    # 2. ACF
-    plot_acf(series_clean, ax=axes[1], lags=lags, color="steelblue", vlines_kwargs={"colors": "steelblue"})
-    axes[1].set_title("Autocorrelación (ACF) - Identificación MA(q)", fontsize=10)
+    # --- 2. ACF (Autocorrelación Simple) ---
+    # title='' BORRA o título automático "Autocorrelation"
+    plot_acf(
+        series_clean, 
+        ax=axes[1], 
+        lags=lags, 
+        color="steelblue", 
+        vlines_kwargs={"colors": "steelblue"},
+        title='' 
+    )
+    axes[1].set_ylabel("ACF", fontsize=12)
     
-    # 3. PACF
-    # method='ywm' é o recomendado para series non moi longas
-    plot_pacf(series_clean, ax=axes[2], lags=lags, method='ywm', color="steelblue", vlines_kwargs={"colors": "steelblue"})
-    axes[2].set_title("Autocorrelación Parcial (PACF) - Identificación AR(p)", fontsize=10)
+    # --- 3. PACF (Autocorrelación Parcial) ---
+    # title='' BORRA o título automático "Partial Autocorrelation"
+    plot_pacf(
+        series_clean, 
+        ax=axes[2], 
+        lags=lags, 
+        method='ywm', 
+        color="steelblue", 
+        vlines_kwargs={"colors": "steelblue"},
+        title=''
+    )
+    axes[2].set_ylabel("PACF", fontsize=12)
+    axes[2].set_xlabel("Retardo (Lags)", fontsize=12)
     
+    # Axuste final para aproveitar o espazo sen deixar oco para títulos
     plt.tight_layout()
     plt.show()
 
@@ -351,7 +367,7 @@ def seleccionar_arima(y_train, X_train, m=1, seasonal=False, d=None, D=None,
         D (int/None): Orde de diferenciación estacional. None=Automático, 1=Forzar D=1.
     """
     
-    print(f"   ⚙️ Config: m={m}, Seasonal={seasonal}, Force_d={d}, Force_D={D}")
+    print(f"   Config: m={m}, Seasonal={seasonal}, Force_d={d}, Force_D={D}")
 
     model_auto = pm.auto_arima(
         y=y_train,
@@ -408,7 +424,7 @@ def detect_outliers_iterativo(y, X_inicial, order, seasonal_order=(0,0,0,0), tre
     fechas_ya_detectadas = set()
     outliers_found = []
     
-    print(f"🔄 Iniciando Detección Iterativa (Max iter: {max_iter})...")
+    print(f" Iniciando Detección Iterativa (Max iter: {max_iter})...")
     
     for i in range(max_iter):
         # 1. Axustar Modelo (Agora soporta Estacionalidade e Tendencia)
@@ -424,7 +440,7 @@ def detect_outliers_iterativo(y, X_inicial, order, seasonal_order=(0,0,0,0), tre
             )
             fit = model.fit(disp=False)
         except Exception as e:
-            print(f"   ⚠️ Fallo de converxencia na iteración {i+1}: {e}")
+            print(f"    Fallo de converxencia na iteración {i+1}: {e}")
             break
         
         # 2. Calcular estatísticos sobre os residuos
@@ -453,7 +469,7 @@ def detect_outliers_iterativo(y, X_inicial, order, seasonal_order=(0,0,0,0), tre
             
             # PROTECCIÓN: Se xa o temos, o modelo non foi capaz de absorbelo
             if fecha_outlier in fechas_ya_detectadas:
-                print(f"   [Iter {i+1}] ⚠️ Data repetida ({fecha_outlier.date()}). Parando para evitar bucle.")
+                print(f"   [Iter {i+1}]  Data repetida ({fecha_outlier.date()}). Parando para evitar bucle.")
                 break
                 
             print(f"   [Iter {i+1}] Detectado: {fecha_outlier.date()} | t-stat: {max_t:.2f} > {critical_value:.2f}")
@@ -486,92 +502,72 @@ def detect_outliers_iterativo(y, X_inicial, order, seasonal_order=(0,0,0,0), tre
             
     # Resultado final
     if not outliers_found:
-        print("   ✅ Non se atoparon outliers.")
+        print("    Non se atoparon outliers.")
         df_outliers = pd.DataFrame(columns=['fecha', 't_stat', 'iter', 'tipo'])
     else:
         df_outliers = pd.DataFrame(outliers_found)
         
     return df_outliers, X_work
 
-
-def analizar_residuos_arima(model_results, lags=20, titulo="Diagnose de Residuos"):
+def analizar_residuos_arima(model_results, lags=52):
     """
-    Xera un informe completo de diagnose de residuos:
-    1. Gráficos: Serie, ACF, Histograma+KDE, Q-Q Plot.
-    2. Tests: Media Cero, Normalidade (Shapiro).
-    
-    Args:
-        model_results: Obxecto resultado de .fit() (SARIMAXResults).
-        lags (int): Retardos para ACF e Ljung-Box.
-        titulo (str): Nome do cluster ou modelo para o gráfico.
+    Xera un informe gráfico de residuos LIMPO (sen títulos) para usar en documentos con caption.
     """
-    # 1. Extraemos os residuos
-    # (Usamos resid, non standardized_resid, para ver a escala real en pedidos)
+    # 1. Extraemos e preparamos residuos
     res = model_results.resid
-    
-    # Eliminamos os primeiros datos se houbo burn-in ou diferenciación (evita outliers falsos ao inicio)
-    # Normalmente ignorar os primeiros 1-2 datos é seguro
     res = res.iloc[1:] 
     
     # --- A. GRÁFICOS (Panel 2x2) ---
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle(f"{titulo}", fontsize=16, fontweight='bold')
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8)) # Reducín un pouco a altura xa que non hai títulos
     
-    # 1. Serie Temporal
+    # 1. Serie Temporal (Arriba-Esquerda)
     axes[0, 0].plot(res, color='steelblue')
     axes[0, 0].axhline(0, color='black', linestyle='--', linewidth=1)
-    axes[0, 0].set_title("Evolución Temporal dos Residuos")
     axes[0, 0].set_ylabel("Erro (Pedidos)")
-
     axes[0, 0].tick_params(axis='x', rotation=45)
+    # SEN TÍTULO AQUÍ
     
-    # 2. ACF (Autocorrelación)
-    plot_acf(res, ax=axes[0, 1], lags=lags, title="Autocorrelación (ACF)", color='steelblue')
+    # 2. ACF (Arriba-Dereita)
+    # IMPORTANTE: title='' é obrigatorio, senón pon "Autocorrelation" el só
+    plot_acf(res, ax=axes[0, 1], lags=lags, color='steelblue', title='')
+    # SEN TÍTULO AQUÍ
     
-    # 3. Distribución (Histograma + KDE)
+    # 3. Distribución (Abaixo-Esquerda)
     sns.histplot(res, kde=True, ax=axes[1, 0], color='skyblue', edgecolor='white')
-    axes[1, 0].set_title("Distribución vs Normal")
+    axes[1, 0].set_ylabel("Frecuencia")
+    # SEN TÍTULO AQUÍ
     
-    # 4. Q-Q Plot
+    # 4. Q-Q Plot (Abaixo-Dereita)
     stats.probplot(res, dist="norm", plot=axes[1, 1])
-    axes[1, 1].set_title("Gráfico Q-Q (Normalidade)")
-    axes[1, 1].get_lines()[0].set_color('steelblue') # Puntos
-    axes[1, 1].get_lines()[1].set_color('red')       # Liña vermella
     
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Axuste para o título principal
+    # Estética manual
+    axes[1, 1].get_lines()[0].set_color('steelblue') 
+    axes[1, 1].get_lines()[1].set_color('red')       
+    axes[1, 1].set_xlabel("Cuantís Teóricos")
+    axes[1, 1].set_ylabel("Cuantís da Mostra")
+    
+    # IMPORTANTE: O probplot pon título por defecto.
+    # Temos que sobrescribilo cunha cadea baleira para borralo:
+    axes[1, 1].set_title("") 
+    
+    # Axuste final (xa non fai falta reservar espazo arriba para suptitle)
+    plt.tight_layout() 
     plt.show()
     
-    # --- B. TESTS ESTATÍSTICOS ---
-    print(f"\n📋 --- INFORME ESTATÍSTICO: {titulo} ---")
-    
-    # 1. Test de Media Cero (T-Test)
-    # H0: A media é 0 (Correcto) | H1: A media non é 0 (Sesgo)
+    # --- B. TESTS ESTATÍSTICOS (Opcional, para que vexas os datos por pantalla) ---
+    print(f"\n --- INFORME ESTATÍSTICO ---")
     t_stat, p_mean = stats.ttest_1samp(res, popmean=0)
-    print(f"1️⃣  Sesgo (Media=0):  p-value = {p_mean:.4f} ", end="")
-    if p_mean > 0.05:
-        print("✅ (Aceptamos H0: Non hai sesgo)")
-    else:
-        print("❌ (Rexeitamos H0: O modelo ten sesgo)")
-
-    # 2. Test de Normalidade (Shapiro-Wilk)
-    # H0: Son normais (Correcto) | H1: Non son normais
-    # Nota: En mostras moi grandes, Shapiro sempre dá < 0.05. Mirar o Q-Q plot tamén.
+    print(f" Nesgo (Media=0):  p-value = {p_mean:.4f}")
     stat_shap, p_shap = stats.shapiro(res)
-    print(f"2️⃣  Normalidade (Shapiro): p-value = {p_shap:.4f} ", end="")
-    if p_shap > 0.05:
-        print("✅ (Aceptamos H0: Residuos normais)")
-    else:
-        print("⚠️ (Rexeitamos H0: Non son perfectamente normais)")
-
+    print(f"  Normalidade (Shapiro): p-value = {p_shap:.4f}")
     print("-" * 60)
-
 
 def rolling_window_arimax(y_train, y_test, X_train, X_test, order, trend='n', verbose=True):
     """
     Executa a validación Rolling Window para modelos ARIMAX.
     CORRECCIÓN: Soporta casos onde non quedan variables exóxenas (Cluster 3).
     """
-    print(f"🚀 Iniciando Rolling Window ARIMAX ({len(y_test)} semanas)...")
+    print(f" Iniciando Rolling Window ARIMAX ({len(y_test)} semanas)...")
     
     # --- 1. SANITIZACIÓN DE ÍNDICES ---
     y_tr = y_train.asfreq('W-MON').fillna(0)
@@ -587,7 +583,7 @@ def rolling_window_arimax(y_train, y_test, X_train, X_test, order, trend='n', ve
     tiene_exog = len(cols_validas) > 0
     
     if not tiene_exog:
-        print("   ℹ️ Aviso: O modelo non ten variables exóxenas (Arima Puro).")
+        print("  Aviso: O modelo non ten variables exóxenas (Arima Puro).")
     
     # --- 2. BUCLE ROLLING WINDOW ---
     history_y = y_tr.copy()
@@ -621,7 +617,7 @@ def rolling_window_arimax(y_train, y_test, X_train, X_test, order, trend='n', ve
                 pred = model_fit.forecast(steps=1).iloc[0] # Sen exog
             
         except Exception as e:
-            print(f"   ⚠️ Fallo na semana {t}: {e}. Usando valor anterior.")
+            print(f"   Fallo na semana {t}: {e}. Usando valor anterior.")
             pred = predictions[-1] if predictions else history_y.iloc[-1]
 
         predictions.append(max(0, pred))
@@ -677,7 +673,6 @@ def plot_predicciones_rolling(y_train, y_test, y_pred, titulo="Predición Rollin
     
    
     # D. Estética
-    plt.title(titulo, fontsize=16, fontweight='bold')
     plt.xlabel('Data')
     plt.ylabel('Volume de Pedidos')
     plt.legend(loc='best', frameon=True, shadow=True)
@@ -698,7 +693,7 @@ def preparar_datos_para_prophet(y_train, y_test, X_train, X_test, nombre_cluster
     Returns:
         pd.DataFrame: DataFrame completo con columna 'semana', 'n_pedidos' e regresores.
     """
-    print(f"   💾 Empaquetando datos de {nombre_cluster} para Prophet...")
+    print(f"    Empaquetando datos de {nombre_cluster} para Prophet...")
     
     # 1. Concatenación Vertical (Tempo)
     y_total = pd.concat([y_train, y_test])
@@ -719,12 +714,7 @@ def preparar_datos_para_prophet(y_train, y_test, X_train, X_test, nombre_cluster
     return df_export
 
 
-# ==============================================================================
-# 6. MODELADO CON PROPHET
-# ==============================================================================
-
-
-# Silenciar os logs de Prophet (é moi falador)
+# Silenciar os logs de Prophet
 logging.getLogger('prophet').setLevel(logging.WARNING)
 logging.getLogger('cmdstanpy').setLevel(logging.WARNING)
 
@@ -759,8 +749,8 @@ def preparar_datos_prophet_final(df_input, fecha_corte='2024-12-30'):
     train_df = df[df['ds'] <= fecha_corte].copy()
     test_df  = df[df['ds'] > fecha_corte].copy()
     
-    print(f"   🔧 Prophet Prep: Train={len(train_df)}, Test={len(test_df)}")
-    print(f"   📌 Regresores detectados ({len(regresores)}): {regresores[:3]}...")
+    print(f"    Prophet Prep: Train={len(train_df)}, Test={len(test_df)}")
+    print(f"    Regresores detectados ({len(regresores)}): {regresores[:3]}...")
     
     return train_df, test_df, regresores
 
@@ -804,11 +794,11 @@ def auditar_datos_prophet(diccionario_datos):
     Args:
         diccionario_datos (dict): O dicionario 'export_para_prophet'.
     """
-    print("--- 🕵️‍♂️ AUDITORÍA DE DATOS PARA PROPHET ---")
+    print("---  AUDITORÍA DE DATOS PARA PROPHET ---")
     print(f"Claves atopadas: {list(diccionario_datos.keys())}\n")
 
     for nombre, df in diccionario_datos.items():
-        print(f"📦 CLUSTER: {nombre}")
+        print(f" CLUSTER: {nombre}")
         print(f"   > Dimensións: {df.shape} (Filas, Columnas)")
         
         # 1. Verificación de Datas
@@ -818,7 +808,7 @@ def auditar_datos_prophet(diccionario_datos):
             max_date = df[col_fecha].max()
             print(f"   > Rango: {min_date.date()} ata {max_date.date()}")
         else:
-            print("   ⚠️ ERRO CRÍTICO: Non se atopa columna de data ('semana' ou 'ds').")
+            print("    ERRO CRÍTICO: Non se atopa columna de data ('semana' ou 'ds').")
 
         # 2. Verificación de Target
         col_target = 'n_pedidos' if 'n_pedidos' in df.columns else 'y'
@@ -827,7 +817,7 @@ def auditar_datos_prophet(diccionario_datos):
             nulos = df[col_target].isnull().sum()
             print(f"   > Target ('{col_target}'): OK (Nulos: {nulos})")
         else:
-            print("   ⚠️ ERRO: Falta a variable obxectivo.")
+            print("    ERRO: Falta a variable obxectivo.")
 
         # 3. Verificación de Regresores (BF e Outliers)
         cols_outlier = [c for c in df.columns if 'outlier_' in c]
@@ -841,11 +831,6 @@ def auditar_datos_prophet(diccionario_datos):
             
         print("-" * 50)
 
-import itertools
-from prophet.diagnostics import cross_validation, performance_metrics
-from prophet import Prophet
-import pandas as pd
-import numpy as np
 
 def realizar_tuning_prophet(train_df, regresores, holidays_df, param_grid, 
                             initial='540 days', period='90 days', horizon='30 days',
@@ -869,7 +854,7 @@ def realizar_tuning_prophet(train_df, regresores, holidays_df, param_grid,
     param_combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
     
     if verbose:
-        print(f"🚀 Iniciando Grid Search con {len(param_combinations)} combinacións...")
+        print(f" Iniciando Grid Search con {len(param_combinations)} combinacións...")
     
     results = []
     
@@ -922,7 +907,7 @@ def realizar_tuning_prophet(train_df, regresores, holidays_df, param_grid,
                 print(f"   > Combinación {i+1}/{len(param_combinations)}: {metric.upper()}={score:.4f}")
                 
         except Exception as e:
-            print(f"   ⚠️ Erro con params {params}: {e}")
+            print(f"   Erro con params {params}: {e}")
             
     # Buscamos o mellor
     if not results:
@@ -932,7 +917,7 @@ def realizar_tuning_prophet(train_df, regresores, holidays_df, param_grid,
     best_result = results_df.loc[results_df['metric'].idxmin()] # Minimizamos erro (RMSE/MAE)
     
     if verbose:
-        print(f"\n✅ Grid Search Completado.")
+        print(f"\n Grid Search Completado.")
         print(f"   Mellor {metric.upper()}: {best_result['metric']:.4f}")
         print(f"   Parámetros: {best_result['params']}")
         
@@ -963,7 +948,7 @@ def rolling_window_prophet(train_df, test_df, regresores, holidays_df, params, v
     
     total_steps = len(test_df)
     if verbose:
-        print(f"🚀 Iniciando Prophet Rolling Window ({total_steps} pasos)...")
+        print(f" Iniciando Prophet Rolling Window ({total_steps} pasos)...")
     
     for t in range(total_steps):
         # 1. Instanciar Modelo con Parámetros e Festivos
@@ -1045,8 +1030,6 @@ def plot_prophet_rolling(train_df, results_df, titulo="Prophet Rolling Window"):
     plt.plot(vis_pred['ds'], vis_pred['yhat'], 
              label='Predición Prophet', color='darkorange', linestyle='--', linewidth=2, marker='x', markersize=5)
     
-    
-    plt.title(titulo, fontsize=16, fontweight='bold')
     plt.xlabel('Data')
     plt.ylabel('Pedidos')
     plt.legend(loc='best')
@@ -1103,7 +1086,6 @@ def plot_prophet_intervalos(train_df, results_df, titulo="Intervalos de predici�
     train_subset = train_df.iloc[-52:]
     plt.plot(train_subset['ds'], train_subset['y'], color='gray', alpha=0.3, label='_nolegend_')
 
-    plt.title(titulo, fontsize=16, fontweight='bold')
     plt.xlabel('Data')
     plt.ylabel('Pedidos')
     plt.legend(loc='upper left')
@@ -1195,7 +1177,6 @@ def plot_componentes_prophet_custom(model, train_df, test_df, titulo="Descomposi
     
     # --- GRÁFICO 1: TENDENCIA (Top-Left) ---
     plot_forecast_component(model, forecast, 'trend', ax=ax[0])
-    ax[0].set_title('1. Tendencia Xeral', fontsize=14, fontweight='bold')
     ax[0].set_ylabel('Tendencia (Pedidos)')
     ax[0].set_xlabel('') # Limpamos para non saturar
     ax[0].grid(True, alpha=0.3)
@@ -1203,7 +1184,6 @@ def plot_componentes_prophet_custom(model, train_df, test_df, titulo="Descomposi
     # --- GRÁFICO 2: ESTACIONALIDADE ANUAL (Top-Right) ---
     if 'yearly' in model.seasonalities:
         plot_forecast_component(model, forecast, 'yearly', ax=ax[1])
-        ax[1].set_title('2. Estacionalidade Anual', fontsize=14, fontweight='bold')
         ax[1].set_ylabel('Impacto Anual')
         ax[1].set_xlabel('Día do Ano')
         ax[1].grid(True, alpha=0.3)
@@ -1215,7 +1195,6 @@ def plot_componentes_prophet_custom(model, train_df, test_df, titulo="Descomposi
     # Contén o efecto da túa lista de datas (Semana Santa, etc.)
     if 'holidays' in forecast.columns:
         plot_forecast_component(model, forecast, 'holidays', ax=ax[2])
-        ax[2].set_title('3. Impacto de Festivos (Calendario)', fontsize=14, fontweight='bold')
         ax[2].set_ylabel('Impacto Festivos')
         ax[2].set_xlabel('Data')
         ax[2].grid(True, alpha=0.3)
@@ -1232,7 +1211,6 @@ def plot_componentes_prophet_custom(model, train_df, test_df, titulo="Descomposi
         
     if reg_component:
         plot_forecast_component(model, forecast, reg_component, ax=ax[3])
-        ax[3].set_title('4. Regresores (Black Friday + Outliers)', fontsize=14, fontweight='bold')
         ax[3].set_ylabel('Impacto Extra')
         ax[3].set_xlabel('Data')
         ax[3].grid(True, alpha=0.3)
